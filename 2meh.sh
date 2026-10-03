@@ -1,0 +1,271 @@
+cat << 'EOF' > ~/gentoo-master-aio.sh
+#!/bin/bash
+# ====================================================
+# 🦊 Shirakami Master AIO Script v8.2 (Gentoo OpenRC + Default Fastfetch)
+# ====================================================
+
+echo "=========================================="
+echo " 🦊 [Gentoo OpenRC] Starting Setup with Default Fastfetch... :p"
+echo "=========================================="
+
+# ----------------------------------------------------
+# 1. OpenRC Service Masking (ปิดบริการ maked ถาวร)
+# ----------------------------------------------------
+echo "❌ [1/10] OpenRC Service Masking for 'maked'..."
+sudo pkill -9 -f maked 2>/dev/null || true
+sudo rc-service maked stop 2>/dev/null || true
+sudo rc-update del maked default 2>/dev/null || true
+sudo rc-update del maked boot 2>/dev/null || true
+
+if [ -f /etc/init.d/maked ]; then
+    sudo rm -f /etc/init.d/maked
+    sudo ln -s /dev/null /etc/init.d/maked
+fi
+sudo chmod 000 /usr/bin/maked 2>/dev/null || true
+
+sudo rm -rf /var/tmp/flagged /tmp/flagged ~/.flagged 2>/dev/null || true
+sudo touch /tmp/flagged ~/.flagged 2>/dev/null || true
+sudo chattr +i /tmp/flagged ~/.flagged 2>/dev/null || true
+
+# ----------------------------------------------------
+# 2. ติดตั้ง Hyprland, Caelestia, Hidamari & Dependencies
+# ----------------------------------------------------
+echo "🧹 [2/10] Installing Hyprland, Caelestia & Hidamari Live Wallpaper..."
+sudo emerge --deselect gui-apps/fuzzel gui-wm/niri 2>/dev/null || true
+sudo emerge --noreplace \
+    gui-wm/hyprland \
+    gui-apps/caelestia-shell \
+    media-gfx/hidamari \
+    gui-apps/mpvpaper \
+    gui-apps/waypaper \
+    media-video/ffmpeg \
+    media-fonts/noto-emoji \
+    media-fonts/noto-thai \
+    media-fonts/inter 2>/dev/null || true
+
+# ----------------------------------------------------
+# 3. ติดตั้ง Packages สำคัญอื่นๆ
+# ----------------------------------------------------
+echo "📦 [3/10] Installing Audio, Gaming & Utility Packages..."
+export USE="wayland vulkan opengl adb vaapi vdpau bluetooth pipewire staging openrc"
+
+sudo emerge --ask=n \
+    sys-apps/adb \
+    net-wireless/android-tools \
+    media-video/vlc \
+    media-sound/pipewire \
+    media-sound/wireplumber \
+    app-emulation/vmware-workstation \
+    games-emulation/ppsspp \
+    games-emulation/dolphin-emu \
+    kde-apps/dolphin \
+    gui-apps/hyprshot \
+    games-action/heroic-games-launcher-bin \
+    games-util/steam-meta \
+    x11-misc/winboat \
+    app-containers/waydroid \
+    x11-drivers/xf86-video-amdgpu \
+    media-libs/mesa \
+    app-misc/fastfetch \
+    app-misc/neofetch \
+    app-emulation/wine-staging \
+    sys-power/tlp 2>/dev/null || true
+
+# ----------------------------------------------------
+# 4. Caelestia Lock Screen (set-lock Function Generator)
+# ----------------------------------------------------
+echo "🎨 [4/10] Setting up Caelestia Lock Screen Preset Generator..."
+mkdir -p ~/.config/caelestia/scripts/
+
+cat << 'LOCK_SCRIPT' > ~/.config/caelestia/scripts/caelestia-lock-preset
+#!/bin/bash
+STYLE=${1:-1}
+CORNER=${2:-2} # 1=ซบ, 2=ขบ, 3=ซล, 4=ขล
+SHOW_STATS=${3:-true}
+CLOCK_FMT=${4:-"hh:mm | dddd dd MMMM"}
+
+case $CORNER in
+    1) POS_X="20"; POS_Y="20" ;;
+    2) POS_X="1600"; POS_Y="20" ;;
+    3) POS_X="20"; POS_Y="950" ;;
+    4) POS_X="1600"; POS_Y="950" ;;
+    *) POS_X="1600"; POS_Y="20" ;;
+esac
+
+cat << QML > ~/.config/caelestia/lockscreen.qml
+import QtQuick 2.15
+import Caelestia.Shell 1.0
+
+Item {
+    id: lockRoot
+    width: 1920
+    height: 1080
+
+    property string fontThai: "Noto Sans Thai"
+    property string fontEn: "Inter"
+
+    Item {
+        x: $POS_X
+        y: $POS_Y
+        visible: $SHOW_STATS
+        Text {
+            text: "🦊 CPU: " + System.cpuUsage + "% | RAM: " + System.ramUsage + "% ✨"
+            font.family: fontEn
+            font.pixelSize: 16
+            color: "#FFFFFF"
+        }
+    }
+
+    Text {
+        anchors.centerIn: parent
+        text: Qt.formatDateTime(new Date(), "$CLOCK_FMT")
+        font.family: fontThai
+        font.pixelSize: 64
+        color: "#FDFDFD"
+    }
+}
+QML
+LOCK_SCRIPT
+
+chmod +x ~/.config/caelestia/scripts/caelestia-lock-preset
+
+# ----------------------------------------------------
+# 5. Waydroid Minimal GAPPS & Auto ADB Script
+# ----------------------------------------------------
+echo "🤖 [5/10] Setting up Waydroid Auto-ADB Script..."
+sudo waydroid init -s GAPPS -f https://mota.waydro.id/13 2>/dev/null || true
+sudo usermod -aG adb $USER
+
+cat << 'ADB_SCRIPT' | sudo tee /usr/local/bin/waydroid-adb-auto
+#!/bin/bash
+sleep 3
+WAYDROID_IP=$(waydroid status | grep "IP:" | awk '{print $2}')
+if [ -z "$WAYDROID_IP" ]; then
+    WAYDROID_IP="192.168.240.112"
+fi
+adb connect $WAYDROID_IP:5555 2>/dev/null || true
+ADB_SCRIPT
+
+sudo chmod +x /usr/local/bin/waydroid-adb-auto
+
+# ----------------------------------------------------
+# 6. Gaming System Optimisations (sysctl)
+# ----------------------------------------------------
+echo "⚡ [6/10] Applying Gaming Tweaks..."
+cat << 'SYSCTL' | sudo tee /etc/sysctl.d/99-gaming-optimiser.conf
+vm.max_map_count = 2147483642
+vm.swappiness = 10
+fs.file-max = 2097152
+kernel.sched_autogroup_enabled = 1
+SYSCTL
+sudo sysctl --system 2>/dev/null || true
+
+# ----------------------------------------------------
+# 7. Hyprland Config (Autostart Hidamari Live Wallpaper)
+# ----------------------------------------------------
+echo "🎨 [7/10] Configuring Hyprland & Autostarting Hidamari..."
+mkdir -p ~/.config/hypr/ ~/wallpapers ~/Pictures/Screenshots
+
+cat << 'HYPR' > ~/.config/hypr/hyprland.conf
+# Hyprland Config for AMD RX500 dGPU
+monitor=,preferred,auto,1
+
+env = DRI_PRIME,1
+env = __GLX_VENDOR_LIBRARY_NAME,amdgpu
+env = WSA_ENABLE_DGPU,1
+
+$mainMod = SUPER
+
+# Application Keybinds
+bind = $mainMod, R, exec, caelestia shell drawers toggle launcher
+bind = $mainMod, E, exec, dolphin
+bind = $mainMod, SPACE, exec, hyprctl switchxkblayout current next
+bind = $mainMod, W, exec, hidamari
+
+# Screenshots
+bind = , Print, exec, hyprshot -m region --clipboard-only
+bind = $mainMod, Print, exec, hyprshot -m window -o ~/Pictures/Screenshots
+bind = $mainMod SHIFT, S, exec, hyprshot -m region -o ~/Pictures/Screenshots
+
+input {
+    kb_layout = us,th
+    kb_options = grp:win_space_toggle
+}
+
+exec-once = dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP
+exec-once = caelestia shell
+exec-once = hidamari --autostart
+exec-once = /usr/local/bin/waydroid-adb-auto
+HYPR
+
+# ----------------------------------------------------
+# 8. ~/.bashrc Integration (set-lock, df1, upd & default fastfetch)
+# ----------------------------------------------------
+echo "⚙️ [8/10] Configuring Bash Commands & Default Fastfetch..."
+cat << 'BASH' >> ~/.bashrc
+
+# Auto-source ./bash ถ้ามีไฟล์
+[ -f ./bash ] && source ./bash
+
+# 1. set-lock: คำสั่งเปลี่ยนรูปแบบ Caelestia Lock Screen
+set-lock() {
+    ~/.config/caelestia/scripts/caelestia-lock-preset "$1" "$2" "$3" "$4"
+}
+
+# 2. df1: Auto Clicker ป้องกันจอดับ + Auto ADB พร้อมรองรับ Ctrl+C
+df1() {
+    /usr/local/bin/waydroid-adb-auto
+    adb shell svc power stayon true 2>/dev/null || true
+    hyprctl dispatch dpms on 2>/dev/null || true
+    trap 'echo -e "\n🛑 [df1] Stopped by Ctrl+C! :p"; return' INT
+    while true; do
+        adb shell input tap 960 920
+        sleep 5
+        adb shell input tap 110 115
+        sleep 0.1
+    done
+}
+
+# 3. upd: อัปเดตแพ็กเกจระบบ
+upd() {
+    echo "🔄 Updating Gentoo System & Applications..."
+    sudo emerge --sync
+    sudo emerge --ask=n --verbose --update --deep --newuse @world
+    sudo emerge --depclean
+    echo "✅ System Update Finished! :3"
+}
+
+export DRI_PRIME=1
+
+# 4. ตั้งค่าให้เปิดเทอร์มินัลมาแล้วรัน fastfetch (หรือ neofetch) อัตโนมัติเป็น Default
+if command -v fastfetch &> /dev/null; then
+    fastfetch
+elif command -v neofetch &> /dev/null; then
+    neofetch
+fi
+BASH
+
+# ----------------------------------------------------
+# 9. Enable OpenRC Services
+# ----------------------------------------------------
+echo "🚀 [9/10] Enabling OpenRC Services..."
+sudo rc-update add dbus default 2>/dev/null || true
+sudo rc-update add NetworkManager default 2>/dev/null || true
+sudo rc-update add waydroid-container default 2>/dev/null || true
+sudo rc-update add tlp default 2>/dev/null || true
+
+sudo rc-service dbus start 2>/dev/null || true
+sudo rc-service NetworkManager start 2>/dev/null || true
+sudo rc-service waydroid-container start 2>/dev/null || true
+sudo rc-service tlp start 2>/dev/null || true
+
+# ----------------------------------------------------
+# 10. Finish
+# ----------------------------------------------------
+echo "=========================================="
+echo " 🎉 SHIRAKAMI MASTER AIO WITH FASTFETCH READY! :3"
+echo "=========================================="
+EOF
+
+chmod +x ~/gentoo-master-aio.sh
+~/gentoo-master-aio.sh
