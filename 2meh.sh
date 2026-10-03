@@ -1,21 +1,13 @@
 #!/bin/bash
 # ====================================================
-# 🦊 Shirakami Master AIO Script v8.3 (Gentoo OpenRC + Root/Sudo Safe)
+# 🦊 Shirakami Master AIO Script v8.4 (Gentoo OpenRC + TTY/Root Safe)
 # ====================================================
 
 echo "=========================================="
 echo " 🦊 [Gentoo OpenRC] Starting Setup with Safe Permissions... :p"
 echo "=========================================="
 
-# เช็คสิทธิ์ Root ถ้าไม่ใช่ root ให้เตือนหรือใช้ su แทน
-if [ "$EUID" -ne 0 ]; then
-    echo "⚠️ Warning: Not running as root. Some commands might need root privileges!"
-    RUN_CMD=""
-else
-    RUN_CMD=""
-fi
-
-# ฟังก์ชันรันคำสั่งโดยเช็คว่ามี sudo ไหม ถ้าไม่มีและไม่ใช่ root ให้รันตรงๆ
+# ฟังก์ชันรันคำสั่งโดยเช็คว่ามี sudo ไหม ถ้าไม่มีและไม่ได้เป็น root ให้รันตรงๆ
 run_privileged() {
     if command -v sudo &> /dev/null; then
         sudo "$@"
@@ -96,7 +88,7 @@ mkdir -p ~/.config/caelestia/scripts/
 cat << 'LOCK_SCRIPT' > ~/.config/caelestia/scripts/caelestia-lock-preset
 #!/bin/bash
 STYLE=${1:-1}
-CORNER=${2:-2} # 1=ซบ, 2=ขบ, 3=ซล, 4=ขล
+CORNER=${2:-2}
 SHOW_STATS=${3:-true}
 CLOCK_FMT=${4:-"hh:mm | dddd dd MMMM"}
 
@@ -155,7 +147,7 @@ run_privileged usermod -aG adb $USER 2>/dev/null || true
 cat << 'ADB_SCRIPT' | run_privileged tee /usr/local/bin/waydroid-adb-auto > /dev/null
 #!/bin/bash
 sleep 3
-WAYDROID_IP=$(waydroid status | grep "IP:" | awk '{print $2}')
+WAYDROID_IP=$(waydroid status 2>/dev/null | grep "IP:" | awk '{print $2}')
 if [ -z "$WAYDROID_IP" ]; then
     WAYDROID_IP="192.168.240.112"
 fi
@@ -183,7 +175,6 @@ echo "🎨 [7/10] Configuring Hyprland & Autostarting Hidamari..."
 mkdir -p ~/.config/hypr/ ~/wallpapers ~/Pictures/Screenshots
 
 cat << 'HYPR' > ~/.config/hypr/hyprland.conf
-# Hyprland Config for AMD RX500 dGPU
 monitor=,preferred,auto,1
 
 env = DRI_PRIME,1
@@ -192,13 +183,11 @@ env = WSA_ENABLE_DGPU,1
 
 $mainMod = SUPER
 
-# Application Keybinds
 bind = $mainMod, R, exec, caelestia shell drawers toggle launcher
 bind = $mainMod, E, exec, dolphin
 bind = $mainMod, SPACE, exec, hyprctl switchxkblayout current next
 bind = $mainMod, W, exec, hidamari
 
-# Screenshots
 bind = , Print, exec, hyprshot -m region --clipboard-only
 bind = $mainMod, Print, exec, hyprshot -m window -o ~/Pictures/Screenshots
 bind = $mainMod SHIFT, S, exec, hyprshot -m region -o ~/Pictures/Screenshots
@@ -217,18 +206,15 @@ HYPR
 # ----------------------------------------------------
 # 8. ~/.bashrc Integration (set-lock, df1, upd & default fastfetch)
 # ----------------------------------------------------
-echo "⚙️ [8/10] Configuring Bash Commands & Default Fastfetch..."
+echo "⚙️️ [8/10] Configuring Bash Commands & Default Fastfetch..."
 cat << 'BASH' >> ~/.bashrc
 
-# Auto-source ./bash ถ้ามีไฟล์
 [ -f ./bash ] && source ./bash
 
-# 1. set-lock: คำสั่งเปลี่ยนรูปแบบ Caelestia Lock Screen
 set-lock() {
     ~/.config/caelestia/scripts/caelestia-lock-preset "$1" "$2" "$3" "$4"
 }
 
-# 2. df1: Auto Clicker ป้องกันจอดับ + Auto ADB พร้อมรองรับ Ctrl+C
 df1() {
     /usr/local/bin/waydroid-adb-auto
     adb shell svc power stayon true 2>/dev/null || true
@@ -242,7 +228,6 @@ df1() {
     done
 }
 
-# 3. upd: อัปเดตแพ็กเกจระบบ
 upd() {
     echo "🔄 Updating Gentoo System & Applications..."
     if command -v sudo &> /dev/null; then
@@ -259,7 +244,6 @@ upd() {
 
 export DRI_PRIME=1
 
-# 4. ตั้งค่าให้เปิดเทอร์มินัลมาแล้วรัน fastfetch (หรือ neofetch) อัตโนมัติเป็น Default
 if command -v fastfetch &> /dev/null; then
     fastfetch
 elif command -v neofetch &> /dev/null; then
@@ -285,5 +269,5 @@ run_privileged rc-service tlp start 2>/dev/null || true
 # 10. Finish
 # ----------------------------------------------------
 echo "=========================================="
-echo " 🎉 SHIRAKAMI MASTER AIO WITH SAFE SUDO/ROOT READY! :3"
+echo " 🎉 SHIRAKAMI MASTER AIO WITH FASTFETCH READY! :3"
 echo "=========================================="
