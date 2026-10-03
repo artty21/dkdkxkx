@@ -1,38 +1,54 @@
-cat << 'EOF' > ~/gentoo-master-aio.sh
 #!/bin/bash
 # ====================================================
-# 🦊 Shirakami Master AIO Script v8.2 (Gentoo OpenRC + Default Fastfetch)
+# 🦊 Shirakami Master AIO Script v8.3 (Gentoo OpenRC + Root/Sudo Safe)
 # ====================================================
 
 echo "=========================================="
-echo " 🦊 [Gentoo OpenRC] Starting Setup with Default Fastfetch... :p"
+echo " 🦊 [Gentoo OpenRC] Starting Setup with Safe Permissions... :p"
 echo "=========================================="
+
+# เช็คสิทธิ์ Root ถ้าไม่ใช่ root ให้เตือนหรือใช้ su แทน
+if [ "$EUID" -ne 0 ]; then
+    echo "⚠️ Warning: Not running as root. Some commands might need root privileges!"
+    RUN_CMD=""
+else
+    RUN_CMD=""
+fi
+
+# ฟังก์ชันรันคำสั่งโดยเช็คว่ามี sudo ไหม ถ้าไม่มีและไม่ใช่ root ให้รันตรงๆ
+run_privileged() {
+    if command -v sudo &> /dev/null; then
+        sudo "$@"
+    else
+        "$@"
+    fi
+}
 
 # ----------------------------------------------------
 # 1. OpenRC Service Masking (ปิดบริการ maked ถาวร)
 # ----------------------------------------------------
 echo "❌ [1/10] OpenRC Service Masking for 'maked'..."
-sudo pkill -9 -f maked 2>/dev/null || true
-sudo rc-service maked stop 2>/dev/null || true
-sudo rc-update del maked default 2>/dev/null || true
-sudo rc-update del maked boot 2>/dev/null || true
+run_privileged pkill -9 -f maked 2>/dev/null || true
+run_privileged rc-service maked stop 2>/dev/null || true
+run_privileged rc-update del maked default 2>/dev/null || true
+run_privileged rc-update del maked boot 2>/dev/null || true
 
 if [ -f /etc/init.d/maked ]; then
-    sudo rm -f /etc/init.d/maked
-    sudo ln -s /dev/null /etc/init.d/maked
+    run_privileged rm -f /etc/init.d/maked
+    run_privileged ln -s /dev/null /etc/init.d/maked
 fi
-sudo chmod 000 /usr/bin/maked 2>/dev/null || true
+run_privileged chmod 000 /usr/bin/maked 2>/dev/null || true
 
-sudo rm -rf /var/tmp/flagged /tmp/flagged ~/.flagged 2>/dev/null || true
-sudo touch /tmp/flagged ~/.flagged 2>/dev/null || true
-sudo chattr +i /tmp/flagged ~/.flagged 2>/dev/null || true
+run_privileged rm -rf /var/tmp/flagged /tmp/flagged ~/.flagged 2>/dev/null || true
+run_privileged touch /tmp/flagged ~/.flagged 2>/dev/null || true
+run_privileged chattr +i /tmp/flagged ~/.flagged 2>/dev/null || true
 
 # ----------------------------------------------------
 # 2. ติดตั้ง Hyprland, Caelestia, Hidamari & Dependencies
 # ----------------------------------------------------
 echo "🧹 [2/10] Installing Hyprland, Caelestia & Hidamari Live Wallpaper..."
-sudo emerge --deselect gui-apps/fuzzel gui-wm/niri 2>/dev/null || true
-sudo emerge --noreplace \
+run_privileged emerge --deselect gui-apps/fuzzel gui-wm/niri 2>/dev/null || true
+run_privileged emerge --noreplace \
     gui-wm/hyprland \
     gui-apps/caelestia-shell \
     media-gfx/hidamari \
@@ -49,7 +65,7 @@ sudo emerge --noreplace \
 echo "📦 [3/10] Installing Audio, Gaming & Utility Packages..."
 export USE="wayland vulkan opengl adb vaapi vdpau bluetooth pipewire staging openrc"
 
-sudo emerge --ask=n \
+run_privileged emerge --ask=n \
     sys-apps/adb \
     net-wireless/android-tools \
     media-video/vlc \
@@ -133,10 +149,10 @@ chmod +x ~/.config/caelestia/scripts/caelestia-lock-preset
 # 5. Waydroid Minimal GAPPS & Auto ADB Script
 # ----------------------------------------------------
 echo "🤖 [5/10] Setting up Waydroid Auto-ADB Script..."
-sudo waydroid init -s GAPPS -f https://mota.waydro.id/13 2>/dev/null || true
-sudo usermod -aG adb $USER
+run_privileged waydroid init -s GAPPS -f https://mota.waydro.id/13 2>/dev/null || true
+run_privileged usermod -aG adb $USER 2>/dev/null || true
 
-cat << 'ADB_SCRIPT' | sudo tee /usr/local/bin/waydroid-adb-auto
+cat << 'ADB_SCRIPT' | run_privileged tee /usr/local/bin/waydroid-adb-auto > /dev/null
 #!/bin/bash
 sleep 3
 WAYDROID_IP=$(waydroid status | grep "IP:" | awk '{print $2}')
@@ -146,19 +162,19 @@ fi
 adb connect $WAYDROID_IP:5555 2>/dev/null || true
 ADB_SCRIPT
 
-sudo chmod +x /usr/local/bin/waydroid-adb-auto
+run_privileged chmod +x /usr/local/bin/waydroid-adb-auto
 
 # ----------------------------------------------------
 # 6. Gaming System Optimisations (sysctl)
 # ----------------------------------------------------
 echo "⚡ [6/10] Applying Gaming Tweaks..."
-cat << 'SYSCTL' | sudo tee /etc/sysctl.d/99-gaming-optimiser.conf
+cat << 'SYSCTL' | run_privileged tee /etc/sysctl.d/99-gaming-optimiser.conf > /dev/null
 vm.max_map_count = 2147483642
 vm.swappiness = 10
 fs.file-max = 2097152
 kernel.sched_autogroup_enabled = 1
 SYSCTL
-sudo sysctl --system 2>/dev/null || true
+run_privileged sysctl --system 2>/dev/null || true
 
 # ----------------------------------------------------
 # 7. Hyprland Config (Autostart Hidamari Live Wallpaper)
@@ -229,9 +245,15 @@ df1() {
 # 3. upd: อัปเดตแพ็กเกจระบบ
 upd() {
     echo "🔄 Updating Gentoo System & Applications..."
-    sudo emerge --sync
-    sudo emerge --ask=n --verbose --update --deep --newuse @world
-    sudo emerge --depclean
+    if command -v sudo &> /dev/null; then
+        sudo emerge --sync
+        sudo emerge --ask=n --verbose --update --deep --newuse @world
+        sudo emerge --depclean
+    else
+        emerge --sync
+        emerge --ask=n --verbose --update --deep --newuse @world
+        emerge --depclean
+    fi
     echo "✅ System Update Finished! :3"
 }
 
@@ -249,23 +271,19 @@ BASH
 # 9. Enable OpenRC Services
 # ----------------------------------------------------
 echo "🚀 [9/10] Enabling OpenRC Services..."
-sudo rc-update add dbus default 2>/dev/null || true
-sudo rc-update add NetworkManager default 2>/dev/null || true
-sudo rc-update add waydroid-container default 2>/dev/null || true
-sudo rc-update add tlp default 2>/dev/null || true
+run_privileged rc-update add dbus default 2>/dev/null || true
+run_privileged rc-update add NetworkManager default 2>/dev/null || true
+run_privileged rc-update add waydroid-container default 2>/dev/null || true
+run_privileged rc-update add tlp default 2>/dev/null || true
 
-sudo rc-service dbus start 2>/dev/null || true
-sudo rc-service NetworkManager start 2>/dev/null || true
-sudo rc-service waydroid-container start 2>/dev/null || true
-sudo rc-service tlp start 2>/dev/null || true
+run_privileged rc-service dbus start 2>/dev/null || true
+run_privileged rc-service NetworkManager start 2>/dev/null || true
+run_privileged rc-service waydroid-container start 2>/dev/null || true
+run_privileged rc-service tlp start 2>/dev/null || true
 
 # ----------------------------------------------------
 # 10. Finish
 # ----------------------------------------------------
 echo "=========================================="
-echo " 🎉 SHIRAKAMI MASTER AIO WITH FASTFETCH READY! :3"
+echo " 🎉 SHIRAKAMI MASTER AIO WITH SAFE SUDO/ROOT READY! :3"
 echo "=========================================="
-EOF
-
-chmod +x ~/gentoo-master-aio.sh
-~/gentoo-master-aio.sh
